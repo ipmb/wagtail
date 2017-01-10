@@ -238,6 +238,39 @@ class Block(six.with_metaclass(BaseBlock, object)):
         })
         return context
 
+    def _get_context_with_context(self, value, context=None):
+        """
+        Temporary hack to accommodate Block subclasses created for Wagtail <1.6 which
+        have overridden `get_context` with the type signature:
+            def get_context(self, value)
+        and will therefore fail when passed a `context` kwarg.
+
+        In Wagtail 1.8, when support for context-less `get_context` methods is dropped,
+        this method will be deleted (and calls to it replaced with a direct call to `get_context`).
+        """
+        if accepts_context(self.get_context):
+            # this get_context method can receive a 'context' kwarg, so we're good
+            return self.get_context(value, context=context)
+        else:
+            # this render method needs updating for Wagtail >=1.6 -
+            # output a deprecation warning
+
+            # find the specific parent class that defines `render` by stepping through the MRO,
+            # falling back on type(self) if it can't be found for some reason
+            class_with_get_context_method = next(
+                (cls for cls in type(self).__mro__ if 'get_context' in cls.__dict__),
+                type(self)
+            )
+
+            warnings.warn(
+                "The get_context method on %s needs to be updated to accept an optional 'context' "
+                "keyword argument" % class_with_get_context_method,
+                category=RemovedInWagtail18Warning
+            )
+
+            # fall back on a call to 'render' without the context kwarg
+            return self.get_context(value)
+
     def _render_with_context(self, value, context=None):
         """
         Temporary hack to accommodate Block subclasses created for Wagtail <1.6 which
@@ -282,9 +315,9 @@ class Block(six.with_metaclass(BaseBlock, object)):
             return self._render_basic_with_context(value, context=context)
 
         if context is None:
-            new_context = self.get_context(value)
+            new_context = self._get_context_with_context(value)
         else:
-            new_context = self.get_context(value, dict(context))
+            new_context = self._get_context_with_context(value, dict(context))
 
         return mark_safe(render_to_string(template, new_context))
 

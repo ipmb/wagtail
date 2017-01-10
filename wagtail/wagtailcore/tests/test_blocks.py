@@ -54,6 +54,15 @@ class LegacyRenderBasicMethodBlock(blocks.CharBlock):
     def render_basic(self, value):
         return str(value).upper()
 
+class LegacyGetContextMethodBlock(blocks.CharBlock):
+    """
+    A block with a render_basic method that doesn't accept a 'context' kwarg.
+    Support for these will be dropped in Wagtail 1.8
+    """
+
+    def get_context(self, value):
+        return str(value).upper()
+
 
 class TestFieldBlock(unittest.TestCase):
     def test_charfield_render(self):
@@ -75,6 +84,17 @@ class TestFieldBlock(unittest.TestCase):
         })
 
         self.assertEqual(html, '<h1 lang="fr">Bonjour le monde!</h1>')
+
+    def test_charfield_get_context_with_context(self):
+        block = blocks.CharBlock(template='tests/blocks/heading_block.html')
+        context = {
+            'language': 'fr',
+        }
+        ret_context = block.get_context('hello', context.copy())
+
+        self.assertEqual(context['language'], ret_context['language'])
+        self.assertEqual('hello', ret_context['self'])
+        self.assertEqual('hello', ret_context['value'])
 
     def test_charfield_render_form(self):
         block = blocks.CharBlock()
@@ -199,6 +219,24 @@ class TestFieldBlock(unittest.TestCase):
             warnings.simplefilter('always')
 
             result = block.render('hello')
+
+        self.assertEqual(result, 'HELLO')
+        self.assertEqual(len(ws), 1)
+        self.assertIs(ws[0].category, RemovedInWagtail18Warning)
+
+    def test_legacy_get_context(self):
+        """
+        LegacyGetContextMethodBlock defines a get_context method that doesn't accept
+        a 'context' kwarg. Calling 'get_context' should gracefully handle this and return
+        the result of calling get_context(value) (i.e. without passing context), but
+        generate a RemovedInWagtail18Warning.
+        """
+        block = LegacyGetContextMethodBlock()
+
+        with warnings.catch_warnings(record=True) as ws:
+            warnings.simplefilter('always')
+
+            result = block._get_context_with_context('hello')
 
         self.assertEqual(result, 'HELLO')
         self.assertEqual(len(ws), 1)
